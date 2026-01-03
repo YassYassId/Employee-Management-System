@@ -1,0 +1,282 @@
+version: '3.9'
+
+services:
+  # ======================
+  # Keycloak Database
+  # ======================
+  keycloak-db:
+    image: postgres:16
+    container_name: keycloak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_pass
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices-net
+
+  # ======================
+  # Keycloak
+  # ======================
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    container_name: ems-keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_pass
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_PROXY_HEADERS: xforwarded  # Helps with proxy awareness if needed later
+      KC_HEALTH_ENABLED: true
+    command:
+      - start-dev
+      - --import-realm
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/realms/master || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ======================
+  # Department Database
+  # ======================
+  department-db:
+    image: postgres:16
+    container_name: department-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: department_db
+      POSTGRES_USER: department_user
+      POSTGRES_PASSWORD: department_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - department_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U department_user -d department_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ======================
+  # Employee Database
+  # ======================
+  employee-db:
+    image: postgres:16
+    container_name: employee-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: employee_db
+      POSTGRES_USER: employee_user
+      POSTGRES_PASSWORD: employee_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - employee_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U employee_user -d employee_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ======================
+  # Eureka Discovery Server
+  # ======================
+  discovery-service:
+    build:
+      context: ./discovery-service
+      dockerfile: Dockerfile
+    container_name: discovery-service
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ======================
+  # Department Service
+  # ======================
+  department-service:
+    build:
+      context: ./department-service
+      dockerfile: Dockerfile
+    container_name: department-service
+    restart: unless-stopped
+    depends_on:
+      department-db:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "8040:8040"
+    environment:
+      # Database
+      SPRING_DATASOURCE_URL: jdbc:postgresql://department-db:5432/department_db
+      SPRING_DATASOURCE_USERNAME: department_user
+      SPRING_DATASOURCE_PASSWORD: department_pass
+      JPA_DDL_AUTO: update
+
+      # Keycloak
+      KEYCLOAK_ISSUER_URI: http://localhost:8080/realms/employee-realm
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/employee-realm/protocol/openid-connect/certs
+
+      # Eureka
+      EUREKA_SERVER: http://discovery-service:8761/eureka
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_HOSTNAME: department-service
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8040/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ======================
+  # Employee Service
+  # ======================
+  employee-service:
+    build:
+      context: ./employee-service
+      dockerfile: Dockerfile
+    container_name: employee-service
+    restart: unless-stopped
+    depends_on:
+      employee-db:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      department-service:
+        condition: service_healthy
+    ports:
+      - "8041:8041"
+    environment:
+      # Database
+      SPRING_DATASOURCE_URL: jdbc:postgresql://employee-db:5432/employee_db
+      SPRING_DATASOURCE_USERNAME: employee_user
+      SPRING_DATASOURCE_PASSWORD: employee_pass
+      JPA_DDL_AUTO: update
+
+      # Keycloak
+      KEYCLOAK_ISSUER_URI: http://localhost:8080/realms/employee-realm
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/employee-realm/protocol/openid-connect/certs
+
+      # Eureka
+      EUREKA_SERVER: http://discovery-service:8761/eureka
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_HOSTNAME: employee-service
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8041/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ======================
+  # API Gateway
+  # ======================
+  gateway-service:
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    container_name: gateway-service
+    restart: unless-stopped
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      department-service:
+        condition: service_healthy
+      employee-service:
+        condition: service_healthy
+    ports:
+      - "8888:8888"
+    environment:
+      # Keycloak
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/employee-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/employee-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/employee-realm/protocol/openid-connect/certs
+
+      # Eureka
+      EUREKA_SERVER: http://discovery-service:8761/eureka
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_HOSTNAME: gateway-service
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8888/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ======================
+  # Frontend (React)
+  # ======================
+  frontend:
+    build:
+      context: ./ems_frontend
+      dockerfile: Dockerfile
+    container_name: ems-frontend
+    restart: unless-stopped
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  microservices-net:
+    driver: bridge
+
+volumes:
+  keycloak_db_data:
+  department_db_data:
+  employee_db_data:
