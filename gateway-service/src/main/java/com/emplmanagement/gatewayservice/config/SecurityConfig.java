@@ -54,17 +54,16 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfig() {
         CorsConfiguration cors = new CorsConfiguration();
 
-        // Configure allowed origins - use specific origins in production
-        cors.setAllowedOrigins(List.of("*"));
+        cors.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",
+                "http://127.0.0.1:*"
+        ));
 
-        // Configure allowed methods
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
-        // Configure allowed headers
         cors.setAllowedHeaders(List.of("*"));
 
-        // Note: If you need credentials, replace "*" with specific origins
-        cors.setAllowCredentials(false);
+        // Authorization header requires this
+        cors.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cors);

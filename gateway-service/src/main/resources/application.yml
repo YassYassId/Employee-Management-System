@@ -1,14 +1,26 @@
 server:
-  port: 8888
+  port: 8888 #${SERVER_PORT:8888}
+
 spring:
   application:
     name: gateway-service
+  cloud:
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
   security:
     oauth2:
+      # ==============================
+      # OAuth2 CLIENT (Login via Keycloak)
+      # ==============================
       client:
         provider:
           keycloak:
-            issuer-uri: http://localhost:8080/realms/employee-realm
+            issuer-uri: ${SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/employee-realm}
             user-name-attribute: preferred_username
 
         registration:
@@ -21,16 +33,19 @@ spring:
               - openid
               - profile
               - email
-
+      # ==============================
+      # RESOURCE SERVER (JWT validation)
+      # ==============================
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/employee-realm
-          jwk-set-uri: http://localhost:8080/realms/employee-realm/protocol/openid-connect/certs
-
-## Eureka Client Configuration
+          # This is what the token claims - must match the browser URL
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8080/realms/employee-realm}
+          # This is where we fetch the public keys - use container name
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/realms/employee-realm/protocol/openid-connect/certs}
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_SERVER:http://localhost:8761/eureka}
   instance:
     prefer-ip-address: true
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:gateway-service}
