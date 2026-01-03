@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logging out...</title>
+    <script>
+        // Auto-redirect to login page after logout
+        // This page can be used as a fallback if Keycloak doesn't redirect
+        setTimeout(function() {
+            window.location.href = '/login';
+        }, 1000);
+    </script>
+</head>
+<body>
+    <p>Logging out... Redirecting to login page...</p>
+    <p>If you are not redirected automatically, <a href="/login">click here</a>.</p>
+</body>
+</html>
+
