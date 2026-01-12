@@ -16,11 +16,16 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
+RUN mkdir -p /app/logs && chmod 755 /app/logs
+
 COPY --from=build /app/target/*.jar app.jar
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl
 
 EXPOSE 8040
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8040/actuator/health || exit 1
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

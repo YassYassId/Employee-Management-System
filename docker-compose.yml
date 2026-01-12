@@ -241,6 +241,7 @@ services:
       EUREKA_SERVER: http://discovery-service:8761/eureka
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
       EUREKA_INSTANCE_HOSTNAME: gateway-service
+
     networks:
       - microservices-net
     healthcheck:
