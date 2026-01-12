@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: gateway-service
+
+  task:
+    scheduling:
+      enabled: true
+      pool:
+        size: 2
   cloud:
     gateway:
       server:
@@ -49,3 +55,46 @@ eureka:
   instance:
     prefer-ip-address: true
     hostname: ${EUREKA_INSTANCE_HOSTNAME:gateway-service}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{correlationId}] [%X{username}] %logger{36} - %msg%n"
+  file:
+    name: /app/logs/gateway-service.log
+  level:
+    root: INFO
+    com.emplmanagement: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,loggers,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Add info
+info:
+  app:
+    name: Gateway Service
+    description: API Gateway for Employee Management System
+    version: 1.0.0
